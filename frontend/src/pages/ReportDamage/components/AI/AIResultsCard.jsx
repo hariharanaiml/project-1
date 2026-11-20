@@ -55,23 +55,31 @@ export default function AIResultsCard({
     repairRecommendation = repairRecommendationProp,
     roadName = roadNameProp,
     address: addressFromData,
+    costRange,
+    currency = 'INR',
   } = resolvedData;
 
   // The simulation exposes the address under `location`; normalize it here.
   const address = addressFromData || resolvedData.location || addressProp;
+
+  // Format cost display: show range for real AI, single value for mock.
+  const costDisplay = useMemo(() => {
+    if (costRange && costRange.min > 0 && costRange.max > 0) {
+      return `${currency} ${Number(costRange.min).toLocaleString()} – ${Number(costRange.max).toLocaleString()}`;
+    }
+    if (estimatedRepairCost) {
+      return `${currency} ${Number(estimatedRepairCost).toLocaleString()}`;
+    }
+    return 'N/A';
+  }, [costRange, currency, estimatedRepairCost]);
 
   const summaryRows = useMemo(() => [
     { label: 'Damage Type', value: damageType },
     { label: 'Severity', value: severity },
     { label: 'Confidence', value: confidence ? `${confidence}%` : 'N/A' },
     { label: 'Priority', value: repairPriority },
-    {
-      label: 'Est. Cost',
-      value: estimatedRepairCost
-        ? `$${Number(estimatedRepairCost).toLocaleString()}`
-        : 'N/A',
-    },
-  ], [damageType, severity, confidence, repairPriority, estimatedRepairCost]);
+    { label: 'Est. Cost', value: costDisplay },
+  ], [damageType, severity, confidence, repairPriority, costDisplay]);
 
   return (
     <section aria-label="AI analysis results" aria-live="polite">

@@ -31,67 +31,45 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     # ── Database ───────────────────────────────────────────────────────────────
-    # Defaults to SQLite so the project runs out of the box. PostgreSQL is fully
-    # supported — change DATABASE_URL to a postgresql+psycopg:// URL to switch.
     database_url: str = "sqlite:///./roadsense.db"
-    # Keep False so Alembic migrations are the source of truth for the schema.
     auto_create_tables: bool = False
 
-    # ── Security (JWT placeholder — real auth lands in Milestone 2) ────────────
+    # ── Security ───────────────────────────────────────────────────────────────
     secret_key: str = "dev-secret-key-change-me-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
 
     # ── CORS ───────────────────────────────────────────────────────────────────
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = (
+        "http://localhost:3000,http://localhost:3001,http://localhost:5173,"
+        "http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:5173"
+    )
 
     # ── Logging ────────────────────────────────────────────────────────────────
     log_level: str = "INFO"
 
     # ── Uploads ────────────────────────────────────────────────────────────────
-    # Directory where uploaded images are stored (relative to the backend/ root
-    # or absolute). A `.gitkeep` keeps the directory in the repo.
     upload_dir: str = "./uploads"
-    # URL prefix that serves the uploaded files via StaticFiles.
     upload_url_prefix: str = "/uploads"
-    # Maximum accepted upload size in megabytes.
-    # Bound from the MAX_UPLOAD_SIZE env key (alias also supports the
-    # MAX_UPLOAD_SIZE_MB form). MAX_UPLOAD_SIZE is parsed as megabytes.
     max_upload_size_mb: int = Field(
         default=10,
         validation_alias=AliasChoices("MAX_UPLOAD_SIZE", "MAX_UPLOAD_SIZE_MB"),
     )
-    # Comma-separated list of allowed image MIME types (env: ALLOWED_IMAGE_TYPES).
-    # Milestone 4 scope: JPG / JPEG / PNG only.
-    allowed_image_types: str = "image/jpeg,image/png"
+    allowed_image_types: str = "image/jpeg,image/png,image/webp"
 
-    # ── AI inference (Phase 13 — Real YOLOv8 integration) ─────────────────────
-    # Master switch: when True, the real YOLOv8 pipeline is used; when False,
-    # the deterministic mock pipeline runs so the app works without a model.
-    # (env: AI_INFERENCE_ENABLED)
+    # ── AI inference ──────────────────────────────────────────────────────────
     ai_inference_enabled: bool = False
-    # Path to the YOLOv8 weights file (.pt), e.g. ./models/yolov8n.pt.
-    # Must be set (and the file must exist) when AI_INFERENCE_ENABLED=true.
-    # (env: AI_MODEL_PATH)
     model_path: str = "./models/yolov8n.pt"
-    # Human-readable model name reported to clients (env: AI_MODEL_NAME).
     model_name: str = "yolov8n"
-    # Compute device: "auto", "cpu", or "cuda:0" (env: AI_DEVICE).
     device: str = "auto"
-    # Confidence threshold (0–1) for a detection to be kept (env: AI_CONF_THRESHOLD).
     conf_threshold: float = 0.25
-    # IoU threshold for NMS (env: AI_IOU_THRESHOLD).
     iou_threshold: float = 0.45
-    # YOLO input image size (env: AI_IMAGE_SIZE).
     image_size: int = 640
-    # Preload & warm the model in the app lifespan (env: AI_PRELOAD_MODEL).
     preload_model: bool = True
-    # Directory where annotated images are stored (env: AI_ANNOTATED_DIR).
     annotated_dir: str = "./annotated"
-    # URL prefix that serves annotated images via StaticFiles (env: AI_ANNOTATED_URL_PREFIX).
     annotated_url_prefix: str = "/annotated"
 
-    # ── Derived ────────────────────────────────────────────────────────────────
+    # ── Derived properties ─────────────────────────────────────────────────────
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse the comma-separated CORS origins into a list."""
@@ -104,37 +82,52 @@ class Settings(BaseSettings):
 
     @property
     def max_upload_size(self) -> int:
-        """Alias for `max_upload_size_bytes` — mirrors the `MAX_UPLOAD_SIZE` env key."""
+        """Alias for `max_upload_size_bytes`."""
         return self.max_upload_size_bytes
 
     @property
     def allowed_image_types_set(self) -> set:
         """Return the allowed image MIME types as a set."""
-        return {item.strip().lower() for item in self.allowed_image_types.split(",") if item.strip()}
+        configured = {
+            item.strip().lower()
+            for item in self.allowed_image_types.split(",")
+            if item.strip()
+        }
+        # These are the image formats supported by the upload and inference
+        # pipelines; include them when older .env files omit WebP.
+        return configured | {"image/jpeg", "image/png", "image/webp"}
+
+    @property
+    def MODEL_PATH(self) -> str:
+        """Alias for `model_path` backward compatibility."""
+        return self.model_path
+
+    @property
+    def AI_ENABLED(self) -> bool:
+        """Alias for `ai_inference_enabled` backward compatibility."""
+        return self.ai_inference_enabled
 
     @property
     def upload_dir_path(self) -> Path:
-        """Return the upload directory as an absolute Path (created on demand)."""
+        """Return the upload directory as an absolute Path."""
         path = Path(self.upload_dir)
         if not path.is_absolute():
-            # Anchor relative paths to the backend/ package root.
             path = Path(__file__).resolve().parent.parent.parent / self.upload_dir
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def annotated_dir_path(self) -> Path:
-        """Return the annotated-images directory as an absolute Path (created on demand)."""
+        """Return the annotated-images directory as an absolute Path."""
         path = Path(self.annotated_dir)
         if not path.is_absolute():
-            # Anchor relative paths to the backend/ package root.
             path = Path(__file__).resolve().parent.parent.parent / self.annotated_dir
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     @property
     def model_path_path(self) -> Path:
-        """Return the model weights path as an absolute Path (anchored to backend/ root)."""
+        """Return the model weights path as an absolute Path."""
         path = Path(self.model_path)
         if not path.is_absolute():
             path = Path(__file__).resolve().parent.parent.parent / self.model_path
@@ -153,9 +146,8 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return a cached Settings instance (avoids re-reading .env per import)."""
+    """Return a cached Settings instance."""
     return Settings()
 
 
 settings = get_settings()
-

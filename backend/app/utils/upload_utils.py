@@ -3,7 +3,7 @@ Upload utility functions.
 
 Standalone, testable helpers used by the upload endpoints:
 
-- ``validate_image()``           — check MIME type / size constraints.
+- ``validate_image_content()``   — validate file size, MIME, and image bytes.
 - ``generate_unique_filename()`` — build a collision-safe UUID filename.
 - ``save_uploaded_file()``       — persist bytes to the configured uploads dir.
 
@@ -12,12 +12,14 @@ functions so they can be reused by any route or worker without coupling to
 the service class.
 """
 
+import io
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile, status
+from PIL import Image, UnidentifiedImageError
 
 from app.core.config import settings
 from app.core.exceptions import ValidationError
@@ -25,8 +27,17 @@ from app.core.exceptions import ValidationError
 # Extension lookup keyed by MIME type (matches the Milestone 4 allow-list).
 _EXTENSIONS = {
     "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
     "image/png": ".png",
+    "image/webp": ".webp",
 }
+_PIL_FORMATS = {
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "WEBP": "image/webp",
+}
+_MIME_ALIASES = {"image/jpg": "image/jpeg"}
+_GENERIC_MIME_TYPES = {"", "application/octet-stream"}
 
 
 def validate_image(
@@ -48,12 +59,13 @@ def validate_image(
         The validated, normalized MIME type.
 
     Raises:
-        ValidationError: if the type is unsupported or the file is too large.
+        ValidationError: if the type is unsupported or the file is empty.
     """
     allowed = allowed_types if allowed_types is not None else settings.allowed_image_types_set
     maximum = max_bytes if max_bytes is not None else settings.max_upload_size_bytes
 
     mime = (content_type or "").lower().strip()
+    mime = _MIME_ALIASES.get(mime, mime)
     if not mime:
         raise ValidationError("Uploaded file is missing a content type.")
 
@@ -72,6 +84,53 @@ def validate_image(
         )
 
     return mime
+
+
+def validate_image_content(
+    contents: bytes,
+    content_type: Optional[str],
+    max_bytes: Optional[int] = None,
+) -> str:
+    """Validate image size, declared MIME type, and decodability from its bytes."""
+    maximum = max_bytes if max_bytes is not None else settings.max_upload_size_bytes
+    if not contents:
+        raise ValidationError("Uploaded file is empty.")
+    if len(contents) > maximum:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Image exceeds the {settings.max_upload_size_mb} MB upload limit.",
+        )
+
+    declared_mime = (content_type or "").lower().strip()
+    declared_mime = _MIME_ALIASES.get(declared_mime, declared_mime)
+    if (
+        declared_mime not in _GENERIC_MIME_TYPES
+        and declared_mime not in settings.allowed_image_types_set
+    ):
+        raise ValidationError(
+            f"Unsupported file type '{declared_mime}'. "
+            "Allowed types: image/jpeg, image/png, image/webp."
+        )
+
+    try:
+        with Image.open(io.BytesIO(contents)) as image:
+            actual_mime = _PIL_FORMATS.get(image.format or "")
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise ValidationError("The uploaded file is not a valid, readable image.") from exc
+
+    if actual_mime is None:
+        raise ValidationError("Unsupported image format. Use JPG, PNG, or WEBP.")
+    if actual_mime not in settings.allowed_image_types_set:
+        raise ValidationError(
+            f"Unsupported image format '{actual_mime}'. "
+            "Allowed types: image/jpeg, image/png, image/webp."
+        )
+    if declared_mime not in _GENERIC_MIME_TYPES and declared_mime != actual_mime:
+        raise ValidationError(
+            f"Image content is {actual_mime}, but the request declared {declared_mime}."
+        )
+    return actual_mime
 
 
 def generate_unique_filename(original_name: Optional[str] = None, mime: Optional[str] = None) -> str:
@@ -191,13 +250,13 @@ def process_upload(file: UploadFile) -> dict:
     original_name = file.filename or "image"
     content_type = (file.content_type or "").lower().strip()
 
-    # Validate size by reading the bytes (guarded).
-    contents = file.file.read()
-    mime = validate_image(content_type, len(contents))
+    # Read at most one byte beyond the limit so oversized requests cannot be
+    # buffered without bound before validation.
+    contents = file.file.read(settings.max_upload_size_bytes + 1)
+    mime = validate_image_content(contents, content_type)
 
     stored_name = generate_unique_filename(original_name, mime)
     meta = save_uploaded_file(contents, stored_name, mime)
     # Expose the client-supplied original filename for the FileUpload schema.
     meta["original_name"] = original_name
     return meta
-

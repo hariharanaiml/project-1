@@ -12,6 +12,7 @@ import RepairCostBreakdown from './components/RepairCostBreakdown';
 import AnalysisTimeline from './components/AnalysisTimeline';
 import ExportActions from './components/ExportActions';
 import { getLatestAnalysis } from '../../services/aiService';
+import { getApiAssetUrl } from '../../services/api';
 import { Alert } from '../../components/common/Alert';
 import { Card } from '../../components/common/Card';
 
@@ -41,9 +42,15 @@ const titleCase = (value = '') =>
 const TONE_BY_LABEL = {
   pothole: 'danger',
   crack: 'warning',
+  longitudinal_crack: 'warning',
+  transverse_crack: 'warning',
+  alligator_crack: 'danger',
+  alligator_cracks: 'danger',
+  patchy_road_section: 'success',
+  lane_line_blur: 'info',
+  manhole_cover: 'primary',
   edge_failure: 'danger',
   surface_wear: 'success',
-  alligator_cracks: 'info',
   rutting: 'warning',
   other: 'primary',
 };
@@ -74,7 +81,6 @@ function mapDetectionResults(analysis) {
   const severity = titleCase(analysis.severity);
   const riskScore = Math.round(Number(analysis.risk_score || 0));
   const roadCondition = analysis.road_condition || 'N/A';
-  const confidence = Math.round(Number(analysis.confidence || 0) * 100);
 
   if (detections.length > 0) {
     return detections.map((det, index) => ({
@@ -88,15 +94,7 @@ function mapDetectionResults(analysis) {
     }));
   }
 
-  return [{
-    id: 1,
-    damageType: titleCase(analysis.damage_type),
-    severity,
-    confidence,
-    riskScore,
-    roadCondition,
-    status: 'Confirmed',
-  }];
+  return [];
 }
 
 /** Format processing time from milliseconds. */
@@ -166,6 +164,8 @@ export default function AIAnalysis() {
 
   const boxes = analysis ? mapBoundingBoxes(analysis.bounding_boxes) : [];
   const results = analysis ? mapDetectionResults(analysis) : [];
+  const imageUrl = getApiAssetUrl(analysis?.image_path);
+  const annotatedImageUrl = getApiAssetUrl(analysis?.annotated_image_url);
   const cost = analysis?.cost_breakdown || {};
   const costItems = [
     { name: 'Material', value: Number(cost.material || 0) },
@@ -251,7 +251,11 @@ export default function AIAnalysis() {
 
             {/* Image comparison */}
             <motion.div variants={fadeUp}>
-              <ImageComparison boxes={boxes} />
+              <ImageComparison
+                imageUrl={imageUrl}
+                annotatedImageUrl={annotatedImageUrl}
+                boxes={boxes}
+              />
             </motion.div>
 
             {/* Detection results + bounding box preview */}
@@ -263,7 +267,7 @@ export default function AIAnalysis() {
                 <DetectionResults results={results} />
               </div>
               <div className="min-w-0">
-                <BoundingBoxPreview boxes={boxes} legend={legend} />
+                <BoundingBoxPreview imageUrl={imageUrl} boxes={boxes} legend={legend} />
               </div>
             </motion.div>
 

@@ -9,13 +9,14 @@ Responsibilities (Milestone 2):
       by ``GET /api/v1/ai/models``.
     - Guarantee thread safety with a single global inference lock.
 
-Milestone 2 scope — **model loading only, no inference**. ``get_model()``
-returns the loaded model or ``None``; no detection is performed here.
+``get_model()`` handles model loading only; detection is performed by
+``YOLODetector`` after the model is loaded.
 
 Graceful-degradation behaviour:
     - If ``AI_ENABLED=false`` or ``MODEL_PATH`` is unset, ``get_model()``
       returns ``None`` and ``is_loaded()`` stays ``False`` — the app runs
-      normally and the mock pipeline is used.
+      normally while the real ``/ai/predict`` endpoint reports the unavailable
+      model rather than returning mock detections.
     - If ``MODEL_PATH`` is set but the file does not exist, a warning is
       logged and ``get_model()`` returns ``None`` instead of crashing.
     - The heavy ``ultralytics`` import is deferred until the first call, so
@@ -69,8 +70,6 @@ class ModelManager:
         Returns ``None`` when real inference is disabled (``AI_ENABLED=false``
         or ``MODEL_PATH`` unset) or when the model file cannot be loaded. Logs
         a warning instead of raising in those cases.
-
-        No inference is performed in this milestone.
         """
         if self._loaded:
             return self._model
@@ -83,7 +82,7 @@ class ModelManager:
             if not ai_settings.enabled:
                 logger.warning(
                     "Real AI inference disabled (AI_ENABLED=%s, MODEL_PATH=%r). "
-                    "Running with the mock pipeline.",
+                    "Real /ai/predict requests will be unavailable.",
                     ai_settings.ai_enabled,
                     ai_settings.model_path,
                 )
@@ -91,12 +90,12 @@ class ModelManager:
 
             model_path = ai_settings.model_path_path
             if model_path is None:
-                logger.warning("MODEL_PATH is missing — real AI inference disabled (mock pipeline used).")
+                logger.warning("MODEL_PATH is missing — real AI inference disabled.")
                 return None
 
             if not model_path.exists():
                 logger.warning(
-                    "Model file not found at %s — real AI inference disabled (mock pipeline used).",
+                    "Model file not found at %s — real AI inference disabled.",
                     model_path,
                 )
                 self._load_error = f"Model file not found: {model_path}"
@@ -117,7 +116,7 @@ class ModelManager:
                 self._load_error = str(exc)
                 self._model = None
                 self._loaded = False
-                logger.warning("Failed to load YOLO model from %s: %s", model_path, exc)
+                logger.exception("Failed to load YOLO model from %s", model_path)
 
         return self._model
 
@@ -154,7 +153,7 @@ class ModelManager:
             "name": self.model_name,
             "loaded": True,
             "device": self._device,
-            "classes": list(names) if isinstance(names, dict) else None,
+            "classes": list(names.values()) if isinstance(names, dict) else None,
             "error": None,
         }
 

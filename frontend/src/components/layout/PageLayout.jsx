@@ -3,8 +3,10 @@ import Sidebar from './Sidebar';
 import Footer from './Footer';
 
 export default function PageLayout({ children, showSidebar = false, hideFooter = false }) {
+  // Apply a dark background for the entire application to achieve a premium dark theme
+  const pageBgClass = 'bg-gray-950 text-white';
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className={`flex min-h-screen flex-col ${pageBgClass}`}>
       <Navbar />
       <div className="flex flex-1">
         {showSidebar && <Sidebar />}

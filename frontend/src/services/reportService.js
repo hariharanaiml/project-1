@@ -1,4 +1,4 @@
-import api from './api';
+import api, { getApiAssetUrl } from './api';
 
 const STATUS_LABELS = {
   submitted: 'Submitted',
@@ -84,7 +84,7 @@ export function normalizeReport(report = {}) {
       hour: '2-digit',
       minute: '2-digit',
     }),
-    image: report.image_path ? `${window.location.origin}/${report.image_path}` : null,
+    image: getApiAssetUrl(report.image_path),
     imagePath: report.image_path || null,
     reportNumber: report.report_number || report.id,
   };

@@ -10,6 +10,15 @@ from app.services.stats_service import admin_overview, admin_users, system_healt
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+@router.get("/stats", summary="Admin stats")
+async def admin_stats_endpoint(
+    db: Session = Depends(get_db),
+    _: object = Depends(get_current_admin),
+) -> dict:
+    """Return aggregate admin statistics (admin only)."""
+    return ok_response(admin_overview(db))
+
+
 @router.get("/overview", summary="Admin overview")
 async def admin_overview_endpoint(
     db: Session = Depends(get_db),

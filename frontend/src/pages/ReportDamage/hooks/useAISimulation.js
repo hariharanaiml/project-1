@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { uploadImage } from '../../../services/uploadService';
 import { createReport } from '../../../services/reportService';
-import { analyzeReport, normalizeAIResult } from '../../../services/aiService';
+import { predictImage } from '../../../services/aiService';
 
 /** Upload simulation stages */
 const UPLOAD_STAGES = [
@@ -31,7 +31,15 @@ const STATE = {
 };
 
 /**
- * useAISimulation hook - Real backend-driven upload and AI analysis pipeline.
+ * useAISimulation hook — Real backend-driven upload and AI analysis pipeline.
+ *
+ * Flow:
+ *   1. Upload image to /upload (stores the file, returns a path/URL).
+ *   2. Create a report record via /reports (for persistence).
+ *   3. Call the REAL YOLO endpoint POST /ai/predict with the image file.
+ *   4. Display the real backend error if inference fails; never substitute
+ *      mock detections for a failed real-model request.
+ *
  * The UI contract remains unchanged so the page layout never needs redesign.
  *
  * @returns {Object} Simulation state and controls
@@ -61,9 +69,11 @@ export function useAISimulation() {
     return 'Completed';
   }, []);
 
-
   /**
    * Start the real upload → create report → analyze report flow.
+   *
+   * Calls the real YOLO endpoint and surfaces validation, authentication, and
+   * inference failures instead of masking them as mock results.
    */
   const startSimulation = useCallback(async (payload = {}) => {
     setError(null);
@@ -80,12 +90,14 @@ export function useAISimulation() {
         throw new Error('Please upload an image before starting AI analysis.');
       }
 
+      // ── Step 1: Upload image to /upload ──────────────────────────────────────
       const uploadMeta = await uploadImage(file, (percent) => {
         if (!mountedRef.current) return;
         setUploadProgress(percent);
         setUploadStage(stageFromProgress(percent));
       });
 
+      // ── Step 2: Create report record ─────────────────────────────────────────
       const createPayload = {
         road_name: payload.roadName || '',
         description: payload.description || '',
@@ -94,7 +106,11 @@ export function useAISimulation() {
         latitude: payload.latitude ? Number(payload.latitude) : null,
         longitude: payload.longitude ? Number(payload.longitude) : null,
         image_path: uploadMeta?.path || uploadMeta?.filename || null,
-        severity: payload.severity && payload.severity !== 'auto_detect' ? payload.severity : null,
+        severity: ['auto detect', 'auto_detect'].includes(
+          String(payload.severity || '').trim().toLowerCase(),
+        )
+          ? null
+          : (payload.severity || null),
       };
 
       const createdReport = await createReport(createPayload);
@@ -105,18 +121,17 @@ export function useAISimulation() {
       setProcessingStage(PROCESSING_STAGES[0]);
       setEstimatedTime(6);
 
-      const aiResponse = await analyzeReport({
-        report_id: createdReport.id,
-        image_path: createPayload.image_path,
-      });
+      // ── Step 3: Run REAL YOLO inference ──────────────────────────────────────
+      const aiResponse = await predictImage(file, { reportId: createdReport.id });
 
-      const normalized = normalizeAIResult(aiResponse);
+      // ── Step 4: Enrich and store results ─────────────────────────────────────
       const enrichedResult = {
-        ...normalized,
+        ...aiResponse,
         roadName: createdReport.roadName || payload.roadName || '',
         location: createdReport.address || payload.address || '',
         uploadTime: createdReport.createdAt || new Date().toISOString(),
         reportId: createdReport.id,
+        isRealAI: true,
       };
 
       setResults(enrichedResult);

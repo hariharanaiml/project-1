@@ -26,7 +26,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_current_user, get_db
+from app.core.exceptions import ForbiddenError
+from app.models.enums import UserRole
+from app.models.report import Report
+from app.models.user import User
 from app.schemas.report import (
     ReportCreate,
     ReportListResponse,
@@ -49,6 +53,14 @@ alias_router = APIRouter(prefix="/reports", tags=["Reports (Unversioned Alias)"]
 def _get_service(db: Session) -> ReportService:
     """Build a ReportService instance bound to the request session."""
     return ReportService(db)
+
+
+def _check_ownership(report: Report, user: User) -> None:
+    """Ensure user is an admin or the owner of the report."""
+    if user.role == UserRole.ADMIN or user.is_superuser:
+        return
+    if report.user_id and report.user_id != user.id:
+        raise ForbiddenError("You do not have permission to perform this action on this report")
 
 
 def _register_report_routes(target: APIRouter) -> None:
@@ -78,12 +90,10 @@ def _register_report_routes(target: APIRouter) -> None:
             default=20, ge=1, le=100, description="Items per page"
         ),
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportListResponse:
         """
-        List reports with optional filtering and pagination.
-
-        Returns the standard list envelope:
-          { "success": true, "data": [...], "total": N, "page": 1, "page_size": 20 }
+        List reports with optional filtering and pagination. Requires authentication.
         """
         service = _get_service(db)
         result = service.list_reports(
@@ -111,13 +121,13 @@ def _register_report_routes(target: APIRouter) -> None:
     async def create_report(
         payload: ReportCreate,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportResponse:
         """
-        Create a new report.
-
-        The report number (RS-YYYY-NNNNNN) is generated automatically.
-        Returns the persisted report in the standard success envelope.
+        Create a new report for the authenticated user.
         """
+        if not payload.user_id:
+            payload.user_id = current_user.id
         service = _get_service(db)
         report = service.create_report(payload)
         return ReportResponse(data=ReportRead.model_validate(report))
@@ -130,11 +140,10 @@ def _register_report_routes(target: APIRouter) -> None:
     async def get_report(
         report_id: str,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportResponse:
         """
-        Fetch a single report by its UUID.
-
-        Raises 404 (NOT_FOUND) when the report does not exist.
+        Fetch a single report by its UUID. Requires authentication.
         """
         service = _get_service(db)
         report = service.get_report(report_id)
@@ -149,19 +158,16 @@ def _register_report_routes(target: APIRouter) -> None:
         report_id: str,
         payload: ReportReplace,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportResponse:
         """
-        Fully replace a report's mutable fields (PUT semantics).
-
-        Unlike PATCH, every mutable field is overwritten with the supplied
-        values; `road_name` and `description` are required. The report id,
-        report number, status, and timestamps are preserved.
-
-        Raises 404 when the report does not exist.
+        Fully replace a report's mutable fields. Requires ownership or admin role.
         """
         service = _get_service(db)
-        report = service.replace_report(report_id, payload)
-        return ReportResponse(data=ReportRead.model_validate(report))
+        report = service.get_report(report_id)
+        _check_ownership(report, current_user)
+        updated_report = service.replace_report(report_id, payload)
+        return ReportResponse(data=ReportRead.model_validate(updated_report))
 
     @target.patch(
         "/{report_id}",
@@ -172,15 +178,16 @@ def _register_report_routes(target: APIRouter) -> None:
         report_id: str,
         payload: ReportUpdate,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportResponse:
         """
-        Partially update a report's mutable fields.
-
-        Fields not provided in the body are left unchanged (exclude_unset).
+        Partially update a report's mutable fields. Requires ownership or admin role.
         """
         service = _get_service(db)
-        report = service.update_report(report_id, payload)
-        return ReportResponse(data=ReportRead.model_validate(report))
+        report = service.get_report(report_id)
+        _check_ownership(report, current_user)
+        updated_report = service.update_report(report_id, payload)
+        return ReportResponse(data=ReportRead.model_validate(updated_report))
 
     @target.patch(
         "/{report_id}/status",
@@ -191,16 +198,16 @@ def _register_report_routes(target: APIRouter) -> None:
         report_id: str,
         payload: ReportStatusUpdate,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> ReportResponse:
         """
-        Transition a report's lifecycle status.
-
-        Setting status to `resolved` records `resolved_at`; moving away from
-        `resolved` clears it.
+        Transition a report's status. Requires ownership or admin role.
         """
         service = _get_service(db)
-        report = service.update_status(report_id, payload.status)
-        return ReportResponse(data=ReportRead.model_validate(report))
+        report = service.get_report(report_id)
+        _check_ownership(report, current_user)
+        updated_report = service.update_status(report_id, payload.status)
+        return ReportResponse(data=ReportRead.model_validate(updated_report))
 
     @target.delete(
         "/{report_id}",
@@ -210,13 +217,14 @@ def _register_report_routes(target: APIRouter) -> None:
     async def delete_report(
         report_id: str,
         db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
     ) -> None:
         """
-        Delete a report by its UUID.
-
-        Returns 204 No Content on success; 404 if the report does not exist.
+        Delete a report by its UUID. Requires ownership or admin role.
         """
         service = _get_service(db)
+        report = service.get_report(report_id)
+        _check_ownership(report, current_user)
         service.delete_report(report_id)
 
 

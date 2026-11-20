@@ -12,11 +12,12 @@ Environment variables
 ---------------------
 ``MODEL_PATH`` (optional, default ``""``)
     Absolute or backend-relative path to the YOLOv8 weights file (``.pt``).
-    When unset, real inference stays disabled and the mock pipeline runs.
+    When unset, real inference stays disabled and ``/ai/predict`` reports that
+    the model is unavailable.
 
 ``AI_ENABLED`` (optional, default ``"false"``)
     Master switch. Must be ``"true"`` (case-insensitive) for real inference to
-    be allowed. When ``false`` or unset, the mock pipeline is used.
+    be allowed. When ``false`` or unset, ``/ai/predict`` is unavailable.
 
 ``CONFIDENCE_THRESHOLD`` (optional, default ``"0.25"``)
     Minimum confidence (0–1) for a detection to be kept.
@@ -48,7 +49,7 @@ class AISettings(BaseSettings):
     )
 
     # Path to the YOLOv8 weights file (e.g. ./models/yolov8n.pt).
-    # Empty by default → real inference disabled, mock pipeline runs.
+    # Empty by default → real inference disabled until explicitly configured.
     model_path: str = Field(default="", description="Path to the YOLOv8 weights file (.pt).")
     # Master switch for real inference (env: AI_ENABLED).
     ai_enabled: bool = Field(default=False, description="Enable real YOLOv8 inference.")
@@ -56,6 +57,10 @@ class AISettings(BaseSettings):
     confidence_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
     # Compute device: "cpu", "auto", or "cuda"/"cuda:N".
     device: str = Field(default="cpu", description="Compute device for inference.")
+    # Optional LLM feature gate (env: LLM_ENABLED).
+    # When False, the YOLO pipeline runs completely independently of any LLM
+    # provider (Vercel AI Gateway, LiteLLM, OpenAI, etc.).
+    llm_enabled: bool = Field(default=False, description="Enable optional LLM recommendations.")
 
     # ── Derived helpers ──────────────────────────────────────────────────────
 

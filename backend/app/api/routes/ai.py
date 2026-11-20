@@ -1,27 +1,21 @@
-"""
-AI analysis endpoints — Milestone 5.
+"""YOLO damage-analysis endpoints and the backward-compatible mock analyze API."""
 
-Exposes the AI damage-analysis API surface and delegates to the **mock**
-AIService (orchestrated through `AIAnalysisService`), so the backend remains
-fully functional without any AI model.
+from typing import Optional
 
-Endpoints (defined once, mounted at both prefixes):
-  * `POST /api/v1/ai/analyze`  (primary, versioned)
-  * `POST /api/ai/analyze`     (unversioned alias)
-  * `GET  /api/v1/ai/models`   (mock model registry)
-  * `GET  /api/ai/models`      (unversioned alias)
-
-YOLOv8 / Torch / OpenCV / model loading / Roboflow / WebSockets are
-explicitly out of scope for this milestone.
-"""
-
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.ai.settings import ai_settings
 from app.api.deps import get_db
+from app.core.config import settings
+from app.core.logging import get_logger
 from app.schemas.ai import AIDetectionRequest
 from app.schemas.ai_analysis import AIResponse, AIResponseEnvelope
 from app.services.ai_analysis_service import AIAnalysisService
+from app.services.inspection_persistence_service import InspectionPersistenceService
+from app.utils.upload_utils import validate_image_content
+
+logger = get_logger(__name__)
 
 # Versioned router (primary) — mounted under `/api/v1` in main.py.
 router = APIRouter(prefix="/ai", tags=["AI"])
@@ -36,8 +30,162 @@ def _get_service(db: Session) -> AIAnalysisService:
     return AIAnalysisService(db)
 
 
+def _run_yolo_predict(image_bytes: bytes, filename: str, report_id: str | None = None) -> dict:
+    """
+    Run the full RoadSense AI pipeline on an uploaded image.
+
+    Pipeline:  bytes → temp file → RoadDamagePipeline
+                → YOLO detection → postprocess → severity → cost → recommendation
+                → annotated image → structured JSON response
+
+    Entirely isolated from LLM / Vercel / LiteLLM — works offline.
+    Never raises — returns an error dict when the model is unavailable.
+
+    Args:
+        image_bytes: Raw bytes of the uploaded image.
+        filename:    Original filename (for traceability only).
+        report_id:   Optional associated report UUID.
+
+    Returns:
+        Full pipeline result dict with: success, detections, detection_count,
+        severity, cost_range, recommendation, annotated_image_url, processing_time_ms.
+    """
+    import tempfile
+    import os
+    from pathlib import Path
+
+    # Save bytes to a temporary file so the pipeline can resolve/decode it.
+    suffix = Path(filename).suffix or ".jpg"
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=suffix, delete=False, prefix="roadsense_upload_"
+        ) as tmp:
+            tmp.write(image_bytes)
+            tmp_path = tmp.name
+
+        from app.ai.pipeline import pipeline
+        result = pipeline.run(image_path=tmp_path, report_id=report_id, analysis_id=None)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Failed to prepare YOLO analysis for %s", filename)
+        result = {
+            "success": False,
+            "image": filename,
+            "detections": [],
+            "detection_count": 0,
+            "model_loaded": False,
+            "llm_available": False,
+            "recommendation": None,
+            "error": str(exc),
+        }
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    # Normalize to a consistent API envelope.
+    if "error" not in result:
+        result["success"] = True
+        result["image"] = filename
+        result["detection_count"] = len(result.get("detections") or [])
+        result["model_loaded"] = True
+        if "recommendation" not in result:
+            result["recommendation"] = result.get("summary") or result.get("repair_method")
+        if report_id:
+            result["report_id"] = report_id
+    # Temporary filesystem paths are implementation details and must never be
+    # returned to the browser.
+    result.pop("image_path", None)
+    return result
+
+
+
 def _register_ai_routes(target: APIRouter) -> None:
     """Attach the AI handlers to a router (single source of truth)."""
+
+    @target.post(
+        "/predict",
+        summary="Run real-time YOLO damage detection",
+        description=(
+            "Uploads an image, runs YOLOv8 inference, and returns detection results. "
+            "A successful inference is persisted as an inspection (AIAnalysis) and "
+            "backfills the owning Report when a report_id is supplied."
+        ),
+        status_code=status.HTTP_200_OK,
+    )
+    async def predict_damage(
+        file: UploadFile = File(...),
+        report_id: Optional[str] = Form(
+            default=None,
+            description="Optional report id used to attach this inspection.",
+        ),
+        db: Session = Depends(get_db),
+    ) -> dict:
+        """Validate an image and run YOLO inference without exposing internals."""
+        content = await file.read(settings.max_upload_size_bytes + 1)
+        validate_image_content(content, file.content_type)
+
+        # If a report_id was supplied, verify the report exists up front so a
+        # malformed reference fails fast (before expensive inference).
+        if report_id:
+            from app.repositories.report_repository import ReportRepository
+
+            report = ReportRepository(db).get(report_id)
+            if not report:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail='Report not found.',
+                )
+
+        result = _run_yolo_predict(content, file.filename or 'upload.jpg', report_id=report_id)
+        if result.get("error"):
+            from app.ai.model_manager import model_manager
+
+            logger.error("YOLO analysis failed for %s: %s", file.filename, result["error"])
+            if not model_manager.is_loaded():
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=f"AI detection service is unavailable: {result['error']}",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"AI detection failed: {result['error']}",
+            )
+
+        # ── Persist the successful inspection ──────────────────────────────────
+        # The pipeline result is stored as an AIAnalysis row and the owning
+        # Report is backfilled with AI-derived fields. Failures are never
+        # recorded as successful inspections (persist_result skips errors).
+        if report_id:
+            try:
+                persistence = InspectionPersistenceService(db)
+                persistence.persist_result(
+                    result=result,
+                    report_id=report_id,
+                )
+            except Exception:  # noqa: BLE001
+                # Persistence failures must never mask a successful detection.
+                logger.exception(
+                    "Failed to persist AI inspection for report %s", report_id
+                )
+
+        return result
+
+    @target.get(
+        "/status",
+        summary="Check AI model status",
+        description="Verifies if the YOLO model is loaded and ready.",
+    )
+    async def check_status() -> dict:
+        """Return model load status."""
+        from app.ai.model_manager import model_manager
+        model = model_manager.get_model()
+        return {
+            "model_loaded": model is not None,
+            "ai_enabled": ai_settings.ai_enabled,
+        }
 
     @target.post(
         "/analyze",
@@ -131,4 +279,3 @@ def _register_ai_routes(target: APIRouter) -> None:
 # Register the same handlers on both routers (single source of truth).
 _register_ai_routes(router)
 _register_ai_routes(alias_router)
-

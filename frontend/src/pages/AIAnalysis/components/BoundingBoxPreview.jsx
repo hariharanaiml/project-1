@@ -5,13 +5,14 @@ import SectionHeading from './SectionHeading';
 import BoundingBoxOverlay, { TONE_STYLES } from './BoundingBoxOverlay';
 
 /**
- * BoundingBoxPreview - Mock detection-canvas simulation with color legend.
+ * BoundingBoxPreview - Actual uploaded image with inference boxes and legend.
  *
  * @param {Object} props
+ * @param {string|null} props.imageUrl - URL of the uploaded image.
  * @param {Array<{id: string, label: string, confidence: number, tone: string, position: string}>} props.boxes - Detection boxes
  * @param {Array<{key: string, label: string, swatchClass: string, textClass: string}>} props.legend - Legend entries
  */
-export default function BoundingBoxPreview({ boxes = [], legend = [] }) {
+export default function BoundingBoxPreview({ imageUrl = null, boxes = [], legend = [] }) {
   return (
     <section aria-label="Bounding box preview">
       <SectionHeading
@@ -31,26 +32,21 @@ export default function BoundingBoxPreview({ boxes = [], legend = [] }) {
           className="relative overflow-hidden bg-white/70 dark:bg-dark-900/70 backdrop-blur-xl"
         >
           {/* Detection canvas */}
-          <div className="relative rounded-t-xl overflow-hidden border-b border-secondary-200 dark:border-dark-700 bg-dark-800 dark:bg-dark-950 aspect-video">
-            {/* Grid pattern (CSS-only utility class) */}
-            <div className="absolute inset-0 detection-grid" aria-hidden="true" />
-            {/* Road mock */}
-            <div className="absolute inset-0 bg-gradient-to-b from-dark-700 via-dark-800 to-dark-700" aria-hidden="true" />
-            <div className="absolute left-[6%] top-0 bottom-0 w-1 bg-warning-600/50" aria-hidden="true" />
-            <div className="absolute right-[6%] top-0 bottom-0 w-1 bg-warning-600/50" aria-hidden="true" />
-            <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-warning-500/30" aria-hidden="true" />
-
-            {/* Boxes */}
-            <BoundingBoxOverlay boxes={boxes} />
-
-            {/* Scanline sweep */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-              className="absolute inset-x-0 h-px bg-primary-400/70 pointer-events-none animate-pulse-soft"
-              aria-hidden="true"
-            />
+          <div className="relative overflow-hidden rounded-t-xl border-b border-secondary-200 dark:border-dark-700 bg-dark-800 dark:bg-dark-950">
+            {imageUrl ? (
+              <>
+                <img
+                  src={imageUrl}
+                  alt="Uploaded road image with AI bounding boxes"
+                  className="block h-auto w-full"
+                />
+                <BoundingBoxOverlay boxes={boxes} />
+              </>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-dark-300">
+                No uploaded image is available for this analysis.
+              </div>
+            )}
           </div>
 
           {/* Legend */}
@@ -82,4 +78,3 @@ export default function BoundingBoxPreview({ boxes = [], legend = [] }) {
     </section>
   );
 }
-

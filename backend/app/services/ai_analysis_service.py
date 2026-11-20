@@ -158,6 +158,7 @@ class AIAnalysisService:
             "road_name": report.road_name if report else None,
             "address": report.address if report else None,
             "image_path": report.image_path if report else None,
+            "annotated_image_url": metadata.get("annotated_image_url"),
             "model_version": analysis.model_version or MOCK_MODEL_VERSION,
             "analysis_status": analysis.analysis_status.value if analysis.analysis_status else "completed",
             "processing_time_ms": analysis.processing_time_ms,
@@ -234,4 +235,3 @@ class AIAnalysisService:
             report.confidence = round(float(result["confidence"]), 4)
         if result.get("estimated_repair_cost"):
             report.estimated_repair_cost = result["estimated_repair_cost"]
-

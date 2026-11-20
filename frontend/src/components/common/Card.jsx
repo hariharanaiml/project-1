@@ -37,18 +37,22 @@ export function Card({
     xl: 'p-6 sm:p-8',
   };
 
+  // Updated to use a deep dark background for premium appearance
+  const baseBg = 'bg-gray-950 dark:bg-gray-900 text-gray-100';
+
   return (
     <div
       className={`
-        bg-white dark:bg-dark-900 rounded-xl
-        ${bordered ? 'border border-secondary-200 dark:border-dark-700' : shadowMap[elevation] || shadowMap.sm}
+        ${baseBg}
+        rounded-xl
+        ${bordered ? 'border border-secondary-700 dark:border-dark-600' : shadowMap[elevation] || shadowMap.sm}
         ${hoverable ? 'hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer' : ''}
         ${className}
       `.trim()}
       {...rest}
     >
       {header && (
-        <div className={`border-b border-secondary-100 dark:border-dark-800 ${paddingMap[padding] || paddingMap.md}`}>
+        <div className={`border-b border-gray-800 ${paddingMap[padding] || paddingMap.md}`}>
           {header}
         </div>
       )}
@@ -56,11 +60,12 @@ export function Card({
         {children}
       </div>
       {footer && (
-        <div className={`border-t border-secondary-100 dark:border-dark-800 ${paddingMap[padding] || paddingMap.md}`}>
+        <div className={`border-t border-gray-800 ${paddingMap[padding] || paddingMap.md}`}>
           {footer}
         </div>
       )}
     </div>
   );
 }
+
 

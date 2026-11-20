@@ -1,11 +1,8 @@
 """
-Shared AI helper utilities (Phase 13 — Milestone 2 scaffold).
+Shared AI helper utilities — Milestone 3 (full implementation).
 
-Small, dependency-free helpers reused across the inference pipeline (box math,
-device string helpers, etc.). Kept import-safe so the app always boots without
-heavy AI dependencies.
-
-Import-safe scaffold only — full implementation lands in Milestone 3.
+Small, dependency-free helpers reused across the inference pipeline.
+Import-safe: no torch/cv2/ultralytics imports at module level.
 """
 
 from __future__ import annotations
@@ -35,16 +32,27 @@ def pick_device(preferred: str) -> str:
     """
     Resolve a preferred device string to a concrete compute device.
 
-    ``"auto"`` → resolves to ``"cuda:0"`` when available, else ``"cpu"``.
-    ``"cpu"`` / ``"cuda"`` / ``"cuda:N"`` are returned as-is.
+    ``"auto"`` → resolves to ``"cuda:0"`` when CUDA is available, else ``"cpu"``.
+    ``"cpu"`` / ``"cuda"`` / ``"cuda:N"`` are returned as-is after validation.
 
     Args:
-        preferred: The configured device string.
+        preferred: The configured device string (from AI_DEVICE env var).
 
     Returns:
-        A concrete device string.
+        A concrete device string safe to pass to ultralytics YOLO.
     """
-    raise NotImplementedError("Implemented in Milestone 3.")
+    preferred = (preferred or "cpu").strip().lower()
+    if preferred in ("", "cpu"):
+        return "cpu"
+    if preferred == "auto":
+        try:
+            import torch  # noqa: PLC0415
+
+            return "cuda:0" if torch.cuda.is_available() else "cpu"
+        except Exception:  # noqa: BLE001 — torch unavailable → cpu
+            return "cpu"
+    # Return cuda / cuda:N / mps as-is.
+    return preferred
 
 
 def detection_confidence(detection: Dict[str, Any]) -> float:

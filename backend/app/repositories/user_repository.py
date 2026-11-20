@@ -24,10 +24,12 @@ class UserRepository(BaseRepository[User]):
 
     def get_by_email(self, email: str) -> Optional[User]:
         """Fetch a user by normalized (trimmed, lowercased) email."""
-        return self.get_by_field("email", email.strip().lower())
+        normalized = email.strip().lower()
+        stmt = select(User).where(func.lower(User.email) == normalized)
+        return self.db.scalars(stmt).first()
 
     def email_exists(self, email: str) -> bool:
         """Return True when a user with the given email already exists."""
         normalized = email.strip().lower()
-        stmt = select(func.count()).select_from(User).where(User.email == normalized)
+        stmt = select(func.count()).select_from(User).where(func.lower(User.email) == normalized)
         return int(self.db.scalars(stmt).one()) > 0

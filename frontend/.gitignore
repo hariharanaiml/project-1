@@ -32,4 +32,14 @@ npm-debug.log*
 # Cache
 .eslintcache
 *.tsbuildinfo
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+
+# Python environment and cache
+.pytest_cache/
+.mypy_cache/
 

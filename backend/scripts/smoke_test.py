@@ -23,7 +23,9 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
 from fastapi.testclient import TestClient  # noqa: E402
+from PIL import Image  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -143,6 +145,48 @@ def main() -> int:
         check("upload response has url", file_url.startswith("/uploads/"), file_url)
         check("upload response has size", upload.get("size", 0) > 0)
 
+        jpeg_buffer = io.BytesIO()
+        Image.open(io.BytesIO(png_bytes)).convert("RGB").save(jpeg_buffer, format="JPEG")
+        jpeg_bytes = jpeg_buffer.getvalue()
+        jpeg_resp = client.post(
+            "/api/v1/upload",
+            files={"file": ("road_damage.jpg", io.BytesIO(jpeg_bytes), "image/jpeg")},
+        )
+        check("POST /api/v1/upload accepts JPG → 201", jpeg_resp.status_code == 201, f"got {jpeg_resp.status_code}")
+
+        webp_buffer = io.BytesIO()
+        Image.open(io.BytesIO(png_bytes)).convert("RGB").save(webp_buffer, format="WEBP")
+        webp_bytes = webp_buffer.getvalue()
+        webp_resp = client.post(
+            "/api/v1/upload",
+            files={"file": ("road_damage.webp", io.BytesIO(webp_bytes), "image/webp")},
+        )
+        check("POST /api/v1/upload accepts WEBP → 201", webp_resp.status_code == 201, f"got {webp_resp.status_code}")
+
+        corrupt_resp = client.post(
+            "/api/v1/upload",
+            files={"file": ("corrupt.jpg", io.BytesIO(b"not an image"), "image/jpeg")},
+        )
+        check("rejects corrupt image bytes (422)", corrupt_resp.status_code == 422, f"got {corrupt_resp.status_code}")
+
+        empty_resp = client.post(
+            "/api/v1/upload",
+            files={"file": ("empty.jpg", io.BytesIO(b""), "image/jpeg")},
+        )
+        check("rejects empty image bytes (422)", empty_resp.status_code == 422, f"got {empty_resp.status_code}")
+
+        oversized_resp = client.post(
+            "/api/v1/upload",
+            files={
+                "file": (
+                    "oversized.jpg",
+                    io.BytesIO(b"x" * (settings.max_upload_size_bytes + 1)),
+                    "image/jpeg",
+                )
+            },
+        )
+        check("rejects oversized image (413)", oversized_resp.status_code == 413, f"got {oversized_resp.status_code}")
+
         # 6. Static file serving ------------------------------------------------
         print("[6] Static file serving")
         static = client.get(file_url)
@@ -248,12 +292,12 @@ def main() -> int:
         m4_disk = BACKEND_ROOT / "uploads" / stored_m4
         check("file saved to backend/uploads/", m4_disk.exists() and m4_disk.stat().st_size > 0, str(m4_disk))
 
-        # Reject unsupported type (WEBP no longer allowed — JPG/JPEG/PNG only).
-        webp_files = {"file": ("img.webp", io.BytesIO(b"webp-bytes"), "image/webp")}
-        resp = client.post("/api/v1/upload", files=webp_files)
-        check("POST /api/v1/upload rejects image/webp (422)", resp.status_code == 422, f"got {resp.status_code}")
-        check("upload 422 envelope success=false", resp.json().get("success") is False)
-        check("upload 422 error code VALIDATION_ERROR", resp.json().get("error", {}).get("code") == "VALIDATION_ERROR")
+        # Reject a MIME mismatch even when the file bytes are a valid image.
+        mismatch_resp = client.post(
+            "/api/v1/upload",
+            files={"file": ("mismatched.png", io.BytesIO(jpeg_bytes), "image/png")},
+        )
+        check("rejects image MIME/content mismatch (422)", mismatch_resp.status_code == 422, f"got {mismatch_resp.status_code}")
 
         # Alias /api/upload
         resp = client.post("/api/upload", files={"file": ("alias.png", io.BytesIO(png_bytes), "image/png")})
@@ -449,4 +493,3 @@ def main() -> int:
 if __name__ == "__main__":
     os.chdir(BACKEND_ROOT)  # ensure relative paths (sqlite, uploads) resolve correctly
     sys.exit(main())
-

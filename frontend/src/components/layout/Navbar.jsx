@@ -43,8 +43,8 @@ export default function Navbar() {
   }, [mobileOpen]);
 
   const navBackground = isLanding && !scrolled
-    ? 'bg-transparent'
-    : 'bg-white/95 dark:bg-dark-900/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 dark:supports-[backdrop-filter]:bg-dark-900/80 border-b border-secondary-200 dark:border-dark-800';
+  ? 'bg-transparent'
+  : 'bg-gray-950/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-800';
 
   const handleLogout = () => {
     logout();

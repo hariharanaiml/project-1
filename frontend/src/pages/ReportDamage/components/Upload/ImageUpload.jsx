@@ -6,13 +6,14 @@ import { Button } from '../../../../components/common/Button';
 import UploadPreview from './UploadPreview';
 import SectionHeader from '../Shared/SectionHeader';
 
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/jpg'];
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const SUPPORTED_FORMATS = [
   { label: 'JPG', value: 'image/jpeg' },
   { label: 'JPEG', value: 'image/jpeg' },
   { label: 'PNG', value: 'image/png' },
+  { label: 'WEBP', value: 'image/webp' },
 ];
 
 /**
@@ -53,7 +54,12 @@ export default function ImageUpload({ value, onChange, error, touched }) {
 
     // Check file type
     if (!ACCEPTED_TYPES.includes(file.type)) {
-      setUploadError('Invalid file type. Please upload a JPG, JPEG, or PNG image.');
+      setUploadError('Invalid file type. Please upload a JPG, JPEG, PNG, or WEBP image.');
+      return;
+    }
+
+    if (file.size === 0) {
+      setUploadError('The selected image is empty.');
       return;
     }
 
@@ -238,7 +244,7 @@ export default function ImageUpload({ value, onChange, error, touched }) {
       <input
         ref={inputRef}
         type="file"
-        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+        accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
         onChange={handleFileChange}
         className="sr-only"
         tabIndex={-1}

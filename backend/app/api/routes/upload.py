@@ -4,8 +4,8 @@ Image upload endpoint — Milestone 4.
 Provides `POST /api/v1/upload` (and its unversioned alias `POST /api/upload`)
 for storing road-damage photos. The endpoint:
 
-  - accepts JPG / JPEG / PNG only (max 10 MB by default),
-  - validates MIME type + size and rejects unsupported files with HTTP 422,
+  - accepts JPG / JPEG / PNG / WEBP (max 10 MB by default),
+  - validates image content + size and rejects unsupported files,
   - stores the file in `backend/uploads/` under a unique UUID filename,
   - returns upload metadata (filename, original filename, timestamp, size,
     mime type) via the `FileUpload` schema.
@@ -30,13 +30,15 @@ def _register_upload_routes() -> APIRouter:
         "/upload",
         summary="Upload an image",
         description=(
-            "Accepts JPG / JPEG / PNG images up to 10 MB. Stores the file in "
+            "Accepts JPG / JPEG / PNG / WEBP images up to 10 MB. Stores the file in "
             "backend/uploads/ under a unique UUID filename and returns its metadata."
         ),
         status_code=status.HTTP_201_CREATED,
         response_model=FileUploadResponse,
     )
-    async def upload_image(file: UploadFile = File(..., description="Image file (JPG/JPEG/PNG)")) -> dict:
+    async def upload_image(
+        file: UploadFile = File(..., description="Image file (JPG/JPEG/PNG/WEBP)"),
+    ) -> dict:
         """
         Upload a road-damage image.
 
@@ -64,4 +66,3 @@ router = _register_upload_routes()
 
 # Unversioned alias router (mounted under /api for backward compatibility).
 alias_router = _register_upload_routes()
-

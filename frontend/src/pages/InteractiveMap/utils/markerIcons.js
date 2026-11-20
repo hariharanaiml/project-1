@@ -69,6 +69,75 @@ export function createSeverityIcon(severity, size = 32) {
 }
 
 /**
+ * Priority color mapping (reuses the design-system palette).
+ * Urgent/Critical → red, High → orange-red, Medium → amber, Low → green.
+ */
+const PRIORITY_COLORS = {
+  urgent: '#d92d20',
+  critical: '#f04438',
+  high: '#f97066',
+  medium: '#fdb022',
+  low: '#12b76a',
+};
+
+const PRIORITY_BG = {
+  urgent: '#fef3f2',
+  critical: '#fef3f2',
+  high: '#fef3f2',
+  medium: '#fffaeb',
+  low: '#ecfdf3',
+};
+
+/**
+ * Create a Leaflet divIcon for an inspection marker based on its priority.
+ * Visually distinguishes URGENT / HIGH / MEDIUM / LOW using the same
+ * colored-circle style as the severity icons.
+ *
+ * @param {string} priority - Priority level (urgent, high, medium, low)
+ * @param {number} [size=32] - Icon size in pixels
+ * @returns {L.DivIcon} Leaflet divIcon instance
+ */
+export function createPriorityIcon(priority, size = 32) {
+  const key = String(priority || '').toLowerCase();
+  const color = PRIORITY_COLORS[key] || '#98a2b3';
+  const bg = PRIORITY_BG[key] || '#f9fafb';
+
+  const html = `
+    <div
+      style="
+        width: ${size}px;
+        height: ${size}px;
+        background: ${bg};
+        border: 3px solid ${color};
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        transition: transform 0.15s ease;
+      "
+    >
+      <div
+        style="
+          width: ${size * 0.375}px;
+          height: ${size * 0.375}px;
+          background: ${color};
+          border-radius: 50%;
+        "
+      ></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    html,
+    className: 'roadsense-marker-icon',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+  });
+}
+
+/**
  * Default marker icon for fallback usage.
  * Returns a Medium (yellow) severity icon.
  */

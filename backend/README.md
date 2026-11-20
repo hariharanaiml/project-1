@@ -3,7 +3,7 @@
 FastAPI backend for the RoadSense AI smart infrastructure intelligence platform.
 
 > **Milestone 4 scope:** image upload (`POST /api/v1/upload` + unversioned
-> alias `POST /api/upload`, JPG/JPEG/PNG only, max 10 MB) with UUID filenames
+> alias `POST /api/upload`, JPG/JPEG/PNG/WEBP, max 10 MB) with UUID filenames
 > and full metadata, standalone upload utility functions, a `FileUpload`
 > Pydantic schema, upload config env keys, and a **mock AI service** that
 > returns sample JSON (no YOLOv8 / torch / OpenCV / model loading). The
@@ -43,26 +43,24 @@ process environment). They are read by `app/ai/settings.py`.
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `AI_ENABLED` | `false` | Master switch. Set to `true` to enable real YOLOv8 inference. |
-| `MODEL_PATH` | *(empty)* | Path to the YOLOv8 weights file (`.pt`). Relative paths are resolved relative to the `backend/` root, e.g. `./models/yolov8n.pt`. |
+| `MODEL_PATH` | *(empty)* | Path to the YOLOv8 weights file (`.pt`). Relative paths are resolved relative to the `backend/` root, e.g. `models/best.pt`. |
 | `CONFIDENCE_THRESHOLD` | `0.25` | Minimum confidence (0–1) for a detection to be kept. |
 | `DEVICE` | `cpu` | Compute device: `cpu`, `auto`, or `cuda` / `cuda:N`. |
 
-**Expected model location:** the YOLOv8 weights file referenced by `MODEL_PATH`.
-The recommended convention is `backend/models/<name>.pt` (e.g.
-`backend/models/yolov8n.pt`); set `MODEL_PATH=models/yolov8n.pt` in `.env`.
+**Expected model location:** `backend/models/best.pt`; set
+`MODEL_PATH=models/best.pt` to load the trained seven-class RoadSense weights.
 
-**Graceful degradation:** if `AI_ENABLED` is `false`, or `MODEL_PATH` is unset,
-or the model file does not exist, the backend starts normally and logs a warning
-— the **mock** AI pipeline is used so the app remains fully functional. Real
-inference is only attempted when `AI_ENABLED=true` **and** `MODEL_PATH` points
-to an existing file.
+If `AI_ENABLED` is `false`, `MODEL_PATH` is unset, or the model file is
+unavailable, the backend starts normally and logs a warning. The real
+`POST /api/v1/ai/predict` endpoint reports the model error instead of returning
+mock detections; the legacy `POST /api/v1/ai/analyze` endpoint remains separate.
 
 Example `.env` block:
 
 ```env
-AI_ENABLED=false
-MODEL_PATH=models/yolov8n.pt
-CONFIDENCE_THRESHOLD=0.25
+AI_ENABLED=true
+MODEL_PATH=models/best.pt
+CONFIDENCE_THRESHOLD=0.15
 DEVICE=cpu
 ```
 
@@ -213,7 +211,7 @@ Unversioned alias: `/api/upload`
 
 | Method | Path                          | Description                                 |
 | ------ | ----------------------------- | ------------------------------------------- |
-| POST   | `/api/v1/upload`              | Upload image (JPG/JPEG/PNG, max 10 MB)      |
+| POST   | `/api/v1/upload`              | Upload image (JPG/JPEG/PNG/WEBP, max 10 MB) |
 | POST   | `/api/upload`                 | Unversioned alias (same handler)            |
 | POST   | `/api/v1/uploads/images`      | Legacy upload (kept for backward compat)    |
 | GET    | `/uploads/{filename}`         | Serve uploaded files (StaticFiles)          |
@@ -280,9 +278,10 @@ Errors use a matching envelope:
 
 1. Client sends `multipart/form-data` with a file field named `file` to
    `POST /api/v1/upload` (or the `/api/upload` alias).
-2. `validate_image()` checks the MIME type against `ALLOWED_IMAGE_TYPES`
-   (`image/jpeg,image/png`) and the size against `MAX_UPLOAD_SIZE` (10 MB).
-   Unsupported types / oversized files are rejected with HTTP 422.
+2. `validate_image_content()` checks the decoded image format (JPG/JPEG,
+   PNG, or WEBP), declared MIME type, and size against `MAX_UPLOAD_SIZE`
+   (10 MB). Corrupt, mismatched, unsupported, empty, and oversized files are
+   rejected before storage or inference.
 3. `generate_unique_filename()` builds a UUID-based filename (e.g.
    `d4f2a1c9….jpg`) and `save_uploaded_file()` writes it to `backend/uploads/`.
 4. The response returns full `FileUpload` metadata: `filename`,
@@ -325,4 +324,3 @@ aliases → request validation (422) → mock AI service JSON.
   recommendations (replacing the mock AI service behind the same interface).
 - **Milestone 6:** Frontend integration (Axios) — connect the React app to
   these endpoints.
-

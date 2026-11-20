@@ -69,14 +69,12 @@ app = FastAPI(
     version=settings.app_version,
     description=(
         "RoadSense AI — Smart Infrastructure Intelligence Platform API. "
-        "Milestone 5: production-ready image upload module "
+        "Image upload module "
         "(`POST /api/v1/upload` + unversioned alias `POST /api/upload`; "
-        "JPG/JPEG/PNG only, max 10 MB, UUID storage, static file serving at "
-        "`/uploads/{filename}`), full Report CRUD, and a structured **mock AI "
-        "damage-analysis pipeline** (`POST /api/v1/ai/analyze` + alias "
-        "`POST /api/ai/analyze`) that persists `AIAnalysis` records and updates "
-        "reports — no YOLOv8 / torch / OpenCV / model loading. Real inference "
-        "lands in a later milestone."
+        "JPG/JPEG/PNG/WEBP, max 10 MB, UUID storage, static file serving at "
+        "`/uploads/{filename}`), full Report CRUD, and real YOLO inference via "
+        "`POST /api/v1/ai/predict`. The legacy `/api/v1/ai/analyze` endpoint "
+        "remains available for compatibility."
     ),
     docs_url="/docs",
     redoc_url="/redoc",
@@ -151,4 +149,3 @@ app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(reports.alias_router, prefix="/api")
 app.include_router(upload.alias_router, prefix="/api")
 app.include_router(ai.alias_router, prefix="/api")
-

@@ -7,14 +7,20 @@ import SectionHeading from './SectionHeading';
 import BoundingBoxOverlay from './BoundingBoxOverlay';
 
 /**
- * ImageComparison - Before/After split of original vs AI-annotated image.
- * Zoom + Download buttons are UI only (no real image manipulation).
+ * ImageComparison - Original upload and its AI-annotated counterpart.
  *
  * @param {Object} props
+ * @param {string|null} props.imageUrl - URL of the uploaded image.
+ * @param {string|null} props.annotatedImageUrl - URL of the annotated image.
  * @param {Array<{id: string, label: string, confidence: number, tone: string, position: string}>} props.boxes - Detection boxes
  */
-export default function ImageComparison({ boxes = [] }) {
+export default function ImageComparison({
+  imageUrl = null,
+  annotatedImageUrl = null,
+  boxes = [],
+}) {
   const [zoomed, setZoomed] = useState(false);
+  const downloadUrl = annotatedImageUrl || imageUrl;
 
   const toggleZoom = useCallback(() => setZoomed((prev) => !prev), []);
 
@@ -52,11 +58,19 @@ export default function ImageComparison({ boxes = [] }) {
                   <span className="text-2xs text-secondary-400 dark:text-dark-500">Original Upload</span>
                 </figcaption>
                 <div
-                  className={`relative rounded-xl overflow-hidden border border-secondary-200 dark:border-dark-700 bg-secondary-100 dark:bg-dark-800 aspect-video transition-transform duration-300 ${
+                  className={`relative overflow-hidden rounded-xl border border-secondary-200 dark:border-dark-700 bg-secondary-100 dark:bg-dark-800 transition-transform duration-300 ${
                     zoomed ? 'scale-105' : 'scale-100'
                   }`}
                 >
-                  <RoadMockImage />
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt="Original uploaded road image"
+                      className="block h-auto w-full"
+                    />
+                  ) : (
+                    <ImageUnavailable />
+                  )}
                 </div>
               </figure>
 
@@ -69,12 +83,28 @@ export default function ImageComparison({ boxes = [] }) {
                   <span className="text-2xs text-secondary-400 dark:text-dark-500">AI Annotated</span>
                 </figcaption>
                 <div
-                  className={`relative rounded-xl overflow-hidden border border-secondary-200 dark:border-dark-700 bg-secondary-100 dark:bg-dark-800 aspect-video transition-transform duration-300 ${
+                  className={`relative overflow-hidden rounded-xl border border-secondary-200 dark:border-dark-700 bg-secondary-100 dark:bg-dark-800 transition-transform duration-300 ${
                     zoomed ? 'scale-105' : 'scale-100'
                   }`}
                 >
-                  <RoadMockImage />
-                  <BoundingBoxOverlay boxes={boxes} />
+                  {annotatedImageUrl ? (
+                    <img
+                      src={annotatedImageUrl}
+                      alt="Road image annotated with actual YOLO detections"
+                      className="block h-auto w-full"
+                    />
+                  ) : imageUrl ? (
+                    <>
+                      <img
+                        src={imageUrl}
+                        alt="Uploaded road image with detection boxes"
+                        className="block h-auto w-full"
+                      />
+                      <BoundingBoxOverlay boxes={boxes} />
+                    </>
+                  ) : (
+                    <ImageUnavailable />
+                  )}
                 </div>
               </figure>
             </div>
@@ -95,7 +125,15 @@ export default function ImageComparison({ boxes = [] }) {
                 variant="secondary"
                 size="sm"
                 leftIcon={Download}
-                aria-label="Download annotated image (UI only)"
+                disabled={!downloadUrl}
+                onClick={() => {
+                  if (!downloadUrl) return;
+                  const link = document.createElement('a');
+                  link.href = downloadUrl;
+                  link.download = 'roadsense-analysis.jpg';
+                  link.click();
+                }}
+                aria-label="Download annotated image"
               >
                 Download
               </Button>
@@ -107,29 +145,10 @@ export default function ImageComparison({ boxes = [] }) {
   );
 }
 
-/**
- * RoadMockImage - Stylized road placeholder used for both panels.
- * CSS-only (no inline styles), responsive via aspect-video container.
- */
-function RoadMockImage() {
+function ImageUnavailable() {
   return (
-    <div
-      className="relative w-full h-full"
-      role="img"
-      aria-label="Mock road surface image with visible pothole and crack damage"
-    >
-      {/* Asphalt texture */}
-      <div className="absolute inset-0 bg-gradient-to-b from-secondary-300 via-secondary-200 to-secondary-300 dark:from-dark-700 dark:via-dark-600 dark:to-dark-700" />
-      {/* Road edge lines */}
-      <div className="absolute left-[6%] top-0 bottom-0 w-1 bg-warning-300 dark:bg-warning-700/60" aria-hidden="true" />
-      <div className="absolute right-[6%] top-0 bottom-0 w-1 bg-warning-300 dark:bg-warning-700/60" aria-hidden="true" />
-      {/* Dashed center lane */}
-      <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-warning-200 dark:bg-warning-600/40" aria-hidden="true" />
-      {/* Pothole */}
-      <div className="absolute left-[16%] top-[38%] w-[20%] h-[26%] rounded-full bg-secondary-400 dark:bg-dark-950 shadow-inner" aria-hidden="true" />
-      {/* Crack */}
-      <div className="absolute left-[58%] top-[28%] w-[30%] h-1.5 rotate-[8deg] bg-secondary-400 dark:bg-dark-950 rounded-full" aria-hidden="true" />
+    <div className="flex h-full min-h-48 items-center justify-center text-sm text-secondary-500 dark:text-dark-400">
+      No uploaded image is available for this analysis.
     </div>
   );
 }
-

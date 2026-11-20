@@ -64,8 +64,8 @@ export const Input = forwardRef(function Input(
           aria-describedby={errorId || helperId}
           className={`
             block w-full rounded-lg text-sm
-            border bg-white dark:bg-dark-800
-            placeholder:text-secondary-400 dark:placeholder:text-dark-500
+            border bg-gray-800 dark:bg-gray-900
+            placeholder:text-gray-400 dark:placeholder:text-gray-500
             transition-colors duration-150
             focus:outline-none focus:ring-2 focus:ring-offset-0
             disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-secondary-50 dark:disabled:bg-dark-800
@@ -75,7 +75,7 @@ export const Input = forwardRef(function Input(
             ${
               error
                 ? 'border-danger-300 dark:border-danger-400 focus:border-danger-500 focus:ring-danger-500/20'
-                : 'border-secondary-300 dark:border-dark-600 focus:border-primary-500 focus:ring-primary-500/20 dark:focus:border-primary-400'
+                : 'border-gray-600 dark:border-gray-700 focus:border-primary-500 focus:ring-primary-500/20 dark:focus:border-primary-400'
             }
           `.trim()}
           {...rest}

@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "RoadSense AI",
+    "slug": "roadsense-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.roadsense.mobile",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY"
+        }
+      },
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "INTERNET"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.roadsense.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "RoadSense uses the camera to capture road damage images for AI analysis.",
+        "NSPhotoLibraryUsageDescription": "RoadSense can pick an existing road photo from your gallery.",
+        "NSLocationWhenInUseUsageDescription": "RoadSense uses your location to tag inspections with GPS coordinates (optional)."
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow RoadSense to use the camera to capture road damage."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow RoadSense to tag inspections with your GPS position (optional)."
+        }
+      ],
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-status-bar",
+      "expo-font"
+    ]
+  }
+}

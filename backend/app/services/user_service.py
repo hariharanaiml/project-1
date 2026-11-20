@@ -68,8 +68,20 @@ class UserService:
             UnauthorizedError: if the credentials are invalid or the account
                 is deactivated.
         """
-        user = self.repo.get_by_email(email)
-        if not user or not verify_password(password, user.hashed_password):
+        normalized_email = email.strip().lower()
+        user = self.repo.get_by_email(normalized_email)
+        user_found = user is not None
+        pw_ok = verify_password(password, user.hashed_password) if user_found else False
+        
+        logger.info(
+            "Authentication attempt: email_normalized=%s user_found=%s password_verified=%s is_active=%s",
+            normalized_email,
+            user_found,
+            pw_ok,
+            user.is_active if user_found else None,
+        )
+
+        if not user or not pw_ok:
             raise UnauthorizedError("Invalid email or password")
 
         if not user.is_active:

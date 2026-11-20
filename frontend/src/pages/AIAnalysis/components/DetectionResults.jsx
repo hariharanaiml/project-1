@@ -73,7 +73,16 @@ export default function DetectionResults({ results = [] }) {
                 </tr>
               </thead>
               <tbody>
-                {results.map((row, index) => (
+                {results.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-6 text-center text-secondary-500 dark:text-dark-400"
+                    >
+                      No damage detected above the model confidence threshold.
+                    </td>
+                  </tr>
+                ) : results.map((row, index) => (
                   <motion.tr
                     key={row.id}
                     initial={{ opacity: 0, x: -8 }}
@@ -113,4 +122,3 @@ export default function DetectionResults({ results = [] }) {
     </section>
   );
 }
-
